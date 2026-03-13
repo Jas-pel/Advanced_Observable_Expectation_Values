@@ -1,0 +1,30 @@
+[build-system]
+# On utilise build_meta, c'est le standard actuel
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "advanced-estimation" # Le nom sur pip
+version = "0.0.1"
+description = "Estimation efficace d'observables quantiques via groupement de Pauli commutants"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    {name = "Jasmin Pelletier", email = "pelletierjasmin7@gmail.com"}
+]
+
+dependencies = [
+    "numpy",
+    "networkx",
+    "qiskit>=1.0.0", # Préciser la version de Qiskit est prudent (gros changements récents)
+    "qiskit-aer",
+    "qiskit-ibm-runtime",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+# Cela va trouver 'advanced_estimation' et ses sous-dossiers (commutation, estimation)
+include = ["advanced_estimation*"]
