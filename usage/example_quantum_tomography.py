@@ -1,13 +1,17 @@
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from qiskit import QuantumCircuit
+from qiskit.quantum_info import (DensityMatrix, Statevector, purity,
+                                 state_fidelity)
 from qiskit_aer import AerSimulator
 from qiskit_ibm_runtime import SamplerV2 as Sampler
-from advanced_estimation.estimation.state_tomography import iterative_quantum_state_tomography, density_matrix_to_state_vector, state_vector_to_dirac
-from advanced_estimation.commutation.general_commuting import GeneralCommutation
-from qiskit.quantum_info import state_fidelity, Statevector, DensityMatrix
-from qiskit.quantum_info import purity
-import pandas as pd
-import matplotlib.pyplot as plt
+
+from advanced_estimation.commutation.general_commuting import \
+    GeneralCommutation
+from usage.state_tomography import (density_matrix_to_state_vector,
+                                    iterative_quantum_state_tomography,
+                                    state_vector_to_dirac)
 
 
 def create_tab_synthesis(state_circuit, sampler, commutation_module, shots_list, state_name="Etat_Quantique"):
@@ -141,6 +145,9 @@ create_tab_synthesis(
     state_circuit=qc,
     sampler=sampler,
     commutation_module=commutation_module,
+    shots_list=[256, 512, 1024, 2048, 4096, 8192, 16384],
+    state_name="TRIPLE_HADAMARD"
+)    commutation_module=commutation_module,
     shots_list=[256, 512, 1024, 2048, 4096, 8192, 16384],
     state_name="TRIPLE_HADAMARD"
 )
