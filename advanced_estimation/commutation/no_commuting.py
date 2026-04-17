@@ -21,7 +21,9 @@ class NoCommutation(BaseCommutation):
 
         return np.identity(paulis.size, dtype=bool)
 
-    def diagonalize_paulis_with_circuit(self, paulis: PauliList) -> tuple[PauliList, QuantumCircuit]:
+    def diagonalize_paulis_with_circuit(
+        self, paulis: PauliList
+    ) -> tuple[PauliList, QuantumCircuit]:
         """
         Diagonalize many bitwize commuting Pauli strings and return diagonalizing unitary as a quantum circuit. The quantum circuit is made of single qubit operators.
 
