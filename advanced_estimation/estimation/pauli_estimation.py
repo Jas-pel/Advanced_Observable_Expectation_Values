@@ -8,42 +8,6 @@ from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from advanced_estimation.commutation.base_commutation import BaseCommutation
 
 
-def estimate_paulis_expectation_values_and_covariances(
-    paulis: PauliList,
-    cliques_paulis_indices: list[NDArray[np.int_]],
-    cliques_shots: NDArray[np.float64],
-    commutation_module: BaseCommutation,
-    state_circuit: QuantumCircuit,
-    sampler: BaseSamplerV2,
-) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """
-    Estimate the expectation values and covariance matrix for a list of Pauli strings assigned to a list of cliques.
-
-    Args:
-        paulis (PauliList): The Pauli strings
-        cliques_paulis_indices (list[NDArray[np.int_]]): Element `i` in the list contains the indices of the Paulis in the ith clique
-        cliques_shots (NDArray[np.float64]): The number of shots for each clique
-        commutation_module (BaseCommutation): A module that defines a commutation relation.
-        state_circuit (QuantumCircuit): The state on each to estimate the expectation values and covariances.
-        sampler (BaseSamplerV2): The sampler on which to run the QuantumCircuits.
-
-    Returns:
-        NDArray[np.float64]: The Pauli strings expectation values
-        NDArray[np.float64]]: The Pauli strings covariance matrix
-    """
-
-    num_paulis = paulis.size
-
-    cliques_expectation_values, cliques_covariances = estimate_cliques_expectation_values_and_covariances(
-        paulis, cliques_paulis_indices, cliques_shots, commutation_module, state_circuit, sampler
-    )
-
-    paulis_expectation_values, paulis_covariances = overall_paulis_expectation_values_and_covariances(
-        num_paulis, cliques_paulis_indices, cliques_expectation_values, cliques_covariances, cliques_shots
-    )
-
-    return paulis_expectation_values, paulis_covariances
-
 
 def estimate_cliques_expectation_values_and_covariances(
     paulis: PauliList,
@@ -71,6 +35,7 @@ def estimate_cliques_expectation_values_and_covariances(
 
     assert len(cliques_shots) == len(cliques_paulis_indices)
 
+    # Verify that Pauli strings inside each clique commute
     cliques_paulis = []
     for clique_paulis_indices in cliques_paulis_indices:
         clique_paulis = paulis[clique_paulis_indices]
@@ -79,22 +44,30 @@ def estimate_cliques_expectation_values_and_covariances(
         ), "The Pauli strings inside a clique should all commute in the sense given by the `commutation_module`"
         cliques_paulis.append(clique_paulis)
 
+    # Diagonalize the Pauli strings of each clique and get the corresponding circuits
     cliques_diag_paulis = []
     cliques_diag_circuits = []
     for clique_paulis in cliques_paulis:
-        clique_diag_paulis, clique_diag_circuit = commutation_module.diagonalize_paulis_with_circuit(clique_paulis)
+        clique_diag_paulis, clique_diag_circuit = (
+            commutation_module.diagonalize_paulis_with_circuit(clique_paulis)
+        )
         cliques_diag_paulis.append(clique_diag_paulis)
         cliques_diag_circuits.append(clique_diag_circuit)
 
+    # Construct the estimation circuits
     estimation_circuits = []
-    for clique_diag_circuit, clique_shots in zip(cliques_diag_circuits, cliques_shots):
+    for clique_diag_circuit in cliques_diag_circuits:
         estimation_circuit = state_circuit.compose(clique_diag_circuit)
         estimation_circuit.measure_all()
         estimation_circuits.append(estimation_circuit)
 
-    pass_manager = generate_preset_pass_manager(backend=sampler.mode, optimization_level=1)
+    # Transpile the estimation circuits to the target backend
+    pass_manager = generate_preset_pass_manager(
+        backend=sampler.mode, optimization_level=1
+    )
     isa_circuits = pass_manager.run(estimation_circuits)
 
+    # Run the circuits and get the results
     pubs = []
     for isa_circuit, clique_shots in zip(isa_circuits, cliques_shots):
         pubs.append((isa_circuit, None, clique_shots))
@@ -106,8 +79,8 @@ def estimate_cliques_expectation_values_and_covariances(
     cliques_covariances = []
     for result, clique_diag_paulis in zip(results, cliques_diag_paulis):
         counts = result.data.meas.get_counts()
-        clique_expectation_values, clique_covariances = diag_paulis_expectation_values_and_covariances(
-            clique_diag_paulis, counts
+        clique_expectation_values, clique_covariances = (
+            diag_paulis_expectation_values_and_covariances(clique_diag_paulis, counts)
         )
 
         cliques_expectation_values.append(clique_expectation_values)
@@ -137,19 +110,35 @@ def overall_paulis_expectation_values_and_covariances(
         NDArray[np.float64]: The overall expectation values
         NDArray[np.float64]: The overall covariance matrix
     """
-    total_shots_per_paulis = get_paulis_shots(num_paulis, cliques_paulis_indices, cliques_shots)  
+    total_shots_per_paulis = get_paulis_shots(
+        num_paulis, cliques_paulis_indices, cliques_shots
+    )
     paulis_expectation_values = np.zeros(num_paulis)
     paulis_covariances = np.zeros((num_paulis, num_paulis))
 
-    for clique_paulis_indices, clique_expectation_values, clique_covariances, clique_shot in zip(cliques_paulis_indices, cliques_expectation_values, cliques_covariances, cliques_shots):
-       
-        paulis_expectation_values[clique_paulis_indices] += clique_shot * clique_expectation_values 
+    for (
+        clique_paulis_indices,
+        clique_expectation_values,
+        clique_covariances,
+        clique_shot,
+    ) in zip(
+        cliques_paulis_indices,
+        cliques_expectation_values,
+        cliques_covariances,
+        cliques_shots,
+    ):
+
+        paulis_expectation_values[clique_paulis_indices] += (
+            clique_shot * clique_expectation_values
+        )
 
         grid = np.ix_(clique_paulis_indices, clique_paulis_indices)
         paulis_covariances[grid] += clique_shot * clique_covariances
 
     paulis_expectation_values /= total_shots_per_paulis
-    paulis_covariances *= np.sum(cliques_shots) / (np.outer(total_shots_per_paulis, total_shots_per_paulis)) 
+    paulis_covariances *= np.sum(cliques_shots) / (
+        np.outer(total_shots_per_paulis, total_shots_per_paulis)
+    )
 
     return paulis_expectation_values, paulis_covariances
 
@@ -217,23 +206,23 @@ def diag_paulis_expectation_values_and_covariances(
 
     # FIRST STEP: Compute expectation values
     # b: bitstrings, q: qubits, p: paulis
-    bits_matrix = np.array(bitstrings_to_bits(list(counts.keys())), dtype=int) # (b, q)
+    bits_matrix = np.array(bitstrings_to_bits(list(counts.keys())), dtype=int)  # (b, q)
 
     lst_counts = list(counts.values())
-    probabilities = np.array(lst_counts, dtype=float) / np.sum(lst_counts) # (b)
-    
+    probabilities = np.array(lst_counts, dtype=float) / np.sum(lst_counts)  # (b)
+
     paulis_z = np.array(diag_paulis.z, dtype=int)  # (p, q)
 
-    n_active_z = np.einsum('bq,pq->bp', bits_matrix, paulis_z)
+    n_active_z = np.einsum("bq,pq->bp", bits_matrix, paulis_z)
     phases_expponent = np.floor_divide(diag_paulis.phase, 2)
     phases = np.choose(phases_expponent, [1, -1])  # (p)
     parity_signs = np.where(n_active_z % 2 == 0, 1, -1)
     eigen_vals = phases * parity_signs  # (b, p)
-    
-    exp_values = np.einsum('b,bp->p', probabilities, eigen_vals)
 
-    # SECOND STEP: Compute covariances    
-    expected_products = np.einsum('b,bp,bk->pk', probabilities, eigen_vals, eigen_vals)
+    exp_values = np.einsum("b,bp->p", probabilities, eigen_vals)
+
+    # SECOND STEP: Compute covariances
+    expected_products = np.einsum("b,bp,bk->pk", probabilities, eigen_vals, eigen_vals)
     product_of_means = np.outer(exp_values, exp_values)
     paulis_paulis_covariances = expected_products - product_of_means
 
