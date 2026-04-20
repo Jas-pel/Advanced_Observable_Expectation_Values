@@ -7,6 +7,17 @@ from advanced_estimation.commutation.base_commutation import BaseCommutation
 
 
 class NoCommutation(BaseCommutation):
+    """
+    Baseline commutation strategy with no grouping.
+    
+    Treats each Pauli operator as incompatible with all others (except itself).
+    This results in N measurement circuits for N Pauli operators - one per operator.
+    
+    Used as a baseline for performance comparison. While inefficient for shot usage,
+    it provides a simple reference point and generates minimal circuit depth per measurement.
+    
+    This is equivalent to saying no two Paulis commute, so they must be measured separately.
+    """
 
     def commutation_table(self, paulis: PauliList) -> NDArray[np.bool]:
         """
@@ -21,7 +32,9 @@ class NoCommutation(BaseCommutation):
 
         return np.identity(paulis.size, dtype=bool)
 
-    def diagonalize_paulis_with_circuit(self, paulis: PauliList) -> tuple[PauliList, QuantumCircuit]:
+    def diagonalize_paulis_with_circuit(
+        self, paulis: PauliList
+    ) -> tuple[PauliList, QuantumCircuit]:
         """
         Diagonalize many bitwize commuting Pauli strings and return diagonalizing unitary as a quantum circuit. The quantum circuit is made of single qubit operators.
 

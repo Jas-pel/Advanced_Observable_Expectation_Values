@@ -11,7 +11,6 @@ from advanced_estimation.estimation.pauli_estimation import (
     bitstrings_to_bits,
     diag_paulis_expectation_values_and_covariances,
     estimate_cliques_expectation_values_and_covariances,
-    estimate_paulis_expectation_values_and_covariances,
     get_paulis_shots,
 )
 
@@ -115,62 +114,3 @@ def test_estimate_cliques_expectation_values_and_covariances_random_state():
             ), "This test may fails sometimes"
 
 
-def test_estimate_paulis_expectation_values_and_covariances_random_state():
-    """
-    Test if the overall Pauli expectation value are within tolerance.
-    If this test fails, be the previous pass, check the function `overall_paulis_expectation_values_and_covariances`.
-    This test might statisticaly fail sometimes.
-    """
-
-    num_qubits = 2
-    state_circuit_depth = 4
-    total_shots = 1000
-
-    simulator = AerSimulator()
-    sampler = Sampler(mode=simulator)
-
-    # Get random Paulis
-    all_paulis = pauli_basis(num_qubits)
-    mask = np.random.choice(a=[False, True], size=all_paulis.size, p=[0.7, 0.3])
-    paulis = all_paulis[mask]
-    num_paulis = paulis.size
-
-    # Exact computation
-    paulis_matrices = paulis.to_matrix(array=True)
-    state_circuit = transpile(build_random_circuit(num_qubits=num_qubits, depth=state_circuit_depth), simulator)
-    state_vector = Statevector(state_circuit).data
-    exact_expectation_values = np.einsum("pij,i,j->p", paulis_matrices, state_vector.conj(), state_vector).real
-
-    module_tuples = [
-        # ("None", NoCommutation()),
-        ("Bitwise", BitwiseCommutation()),
-        ("General", GeneralCommutation(False)),
-    ]
-
-    for i, (module_label, commutation_module) in enumerate(module_tuples):
-
-        cliques_paulis_indices = commutation_module.find_commuting_cliques(paulis)
-        num_cliques = len(cliques_paulis_indices)
-
-        cliques_shots = [max(total_shots // num_cliques, 1) for _ in range(num_cliques)]
-
-        paulis_shots = get_paulis_shots(num_paulis, cliques_paulis_indices, cliques_shots)
-
-        paulis_expectation_values, paulis_covariances = estimate_paulis_expectation_values_and_covariances(
-            paulis,
-            cliques_paulis_indices,
-            cliques_shots,
-            commutation_module,
-            state_circuit,
-            sampler,
-        )
-
-        ref_paulis_expectation_values = exact_expectation_values
-
-        paulis_variances = paulis_covariances.diagonal() / paulis_shots
-
-        assert check_expectation_values_within_range(
-            paulis_expectation_values,
-            ref_paulis_expectation_values,
-            paulis_variances,
-        ), "This test may fails sometimes"

@@ -8,14 +8,35 @@ from advanced_estimation.commutation.base_commutation import BaseCommutation
 
 
 class GeneralCommutation(BaseCommutation):
+    """
+    Commutation strategy based on general quantum commutation relations.
+    
+    Implements the algorithm from Gokhale et al. (arXiv:1907.13623) for optimal
+    Pauli grouping. Groups operators by computing commutation relationships using
+    the anticommutation count, then synthesizes efficient diagonalization circuits.
+    
+    This strategy produces the minimal number of measurement groups, making it
+    the most efficient for shot budget allocation.
+    
+    Attributes:
+        force_single_qubit_generators (bool): Whether to include single-qubit generators
+            in addition to multi-qubit generators for improved circuit efficiency.
+    """
 
     def __init__(self, force_single_qubit_generators=True):
-
+        """
+        Initialize the GeneralCommutation strategy.
+        
+        Args:
+            force_single_qubit_generators (bool, optional): If True, add single-qubit
+                generators to the set for potentially shorter circuits. Default: True.
+        """
         self.force_single_qubit_generators = force_single_qubit_generators
 
     def commutation_table(self, paulis: PauliList) -> NDArray[np.bool]:
         """
-        Return the general commutation table within a PauliList. The element (i,j) is True if the ith Pauli string commutes with the jth Pauli string.
+        Return the general commutation table within a PauliList.
+        The element (i,j) is True if the ith Pauli string commutes with the jth Pauli string.
 
         Args:
             paulis (PauliList): A list of Pauli strings
@@ -23,14 +44,17 @@ class GeneralCommutation(BaseCommutation):
         Returns:
             NDArray[np.bool]: The commutation table
         """
-        x = paulis.x.astype(int) # (p, q)
-        z = paulis.z.astype(int) # (p, q)
-        
-        commutation_table = np.einsum('pq, kq -> pk', x, z) + np.einsum('pq, kq -> pk', z, x)
+        x = paulis.x.astype(int)
+        z = paulis.z.astype(int)
+
+        commutation_table = np.einsum("iq, jq -> ij", x, z) + np.einsum(
+            "iq, jq -> ij", z, x
+        )
         return np.mod(commutation_table, 2) == 0
 
-
-    def diagonalize_paulis_with_circuit(self, paulis: PauliList) -> tuple[PauliList, QuantumCircuit]:
+    def diagonalize_paulis_with_circuit(
+        self, paulis: PauliList
+    ) -> tuple[PauliList, QuantumCircuit]:
         """
         Diagonalize many general commuting Pauli strings and return diagonalizing unitary as a quantum circuit.
         Based on Gokhale et al. (2019, arXiv:1907.13623)
@@ -51,7 +75,9 @@ class GeneralCommutation(BaseCommutation):
         generators_paulis = self._paulis_to_generators(paulis)
 
         if self.force_single_qubit_generators:
-            single_qubit_generators_paulis = self._single_qubit_cummuting_generators(generators_paulis)
+            single_qubit_generators_paulis = self._single_qubit_cummuting_generators(
+                generators_paulis
+            )
             generators_paulis = generators_paulis + single_qubit_generators_paulis
 
         qubit_order = np.arange(paulis.num_qubits)
@@ -63,7 +89,9 @@ class GeneralCommutation(BaseCommutation):
 
         # change generator and qubit orders to have as many 1 on the diagonal of x from the upper left corner
         x_table, row_op, col_order, start_index = self._pack_diagonal(x_table, 0)
-        z_table = np.mod((row_op.astype(np.uint) @ z_table.astype(np.uint)), 2).astype(bool)[:, col_order]
+        z_table = np.mod((row_op.astype(np.uint) @ z_table.astype(np.uint)), 2).astype(
+            bool
+        )[:, col_order]
         qubit_order = qubit_order[col_order]
 
         # print()
@@ -72,8 +100,12 @@ class GeneralCommutation(BaseCommutation):
         end_block_x = start_index
 
         # change generator and qubit orders to have as many 1 on the diagonal of z from the last diagonal x
-        z_table, row_op, col_order, start_index = self._pack_diagonal(z_table, start_index)
-        x_table = np.mod((row_op.astype(np.uint) @ x_table.astype(np.uint)), 2).astype(bool)[:, col_order]
+        z_table, row_op, col_order, start_index = self._pack_diagonal(
+            z_table, start_index
+        )
+        x_table = np.mod((row_op.astype(np.uint) @ x_table.astype(np.uint)), 2).astype(
+            bool
+        )[:, col_order]
         qubit_order = qubit_order[col_order]
 
         end_block_z = start_index
@@ -94,9 +126,14 @@ class GeneralCommutation(BaseCommutation):
                 _js = np.where(x_table[i, i + 1 :])[0] + i + 1
                 _is = i * np.ones(_js.shape, dtype=int)
                 x_table[:, _js] = np.logical_xor(x_table[:, _js], x_table[:, _is])
-                z_table[:, i] = np.logical_xor(z_table[:, i], np.mod(np.sum(z_table[:, _js], axis=1), 2).astype(bool))
+                z_table[:, i] = np.logical_xor(
+                    z_table[:, i],
+                    np.mod(np.sum(z_table[:, _js], axis=1), 2).astype(bool),
+                )
 
-                diag_paulis = clifford.cx(diag_paulis, qubit_order[_is], qubit_order[_js])
+                diag_paulis = clifford.cx(
+                    diag_paulis, qubit_order[_is], qubit_order[_js]
+                )
                 circuit.cx(qubit_order[_is], qubit_order[_js])
 
         # clear Z block with CZ
@@ -105,9 +142,14 @@ class GeneralCommutation(BaseCommutation):
                 _js = np.where(z_table[i, :i])[0]
                 _is = i * np.ones(_js.shape, dtype=int)
                 z_table[:, _js] = np.logical_xor(z_table[:, _js], x_table[:, _is])
-                z_table[:, i] = np.logical_xor(z_table[:, i], np.mod(np.sum(x_table[:, _js], axis=1), 2).astype(bool))
+                z_table[:, i] = np.logical_xor(
+                    z_table[:, i],
+                    np.mod(np.sum(x_table[:, _js], axis=1), 2).astype(bool),
+                )
 
-                diag_paulis = clifford.cz(diag_paulis, qubit_order[_is], qubit_order[_js])
+                diag_paulis = clifford.cz(
+                    diag_paulis, qubit_order[_is], qubit_order[_js]
+                )
                 circuit.cz(qubit_order[_is], qubit_order[_js])
 
         # clear diag Z with S
@@ -167,24 +209,51 @@ class GeneralCommutation(BaseCommutation):
                 break
 
             if hot_col != start_index:
-                bit_table[:, [start_index, hot_col]] = bit_table[:, [hot_col, start_index]]
+                bit_table[:, [start_index, hot_col]] = bit_table[
+                    :, [hot_col, start_index]
+                ]
                 col_order[[start_index, hot_col]] = col_order[[hot_col, start_index]]
 
             if hot_row != start_index:
-                bit_table[[start_index, hot_row], :] = bit_table[[hot_row, start_index], :]
+                bit_table[[start_index, hot_row], :] = bit_table[
+                    [hot_row, start_index], :
+                ]
                 row_op[[start_index, hot_row], :] = row_op[[hot_row, start_index], :]
 
-            cond_rows = np.logical_and(bit_table[:, start_index], (row_range != start_index))
+            cond_rows = np.logical_and(
+                bit_table[:, start_index], (row_range != start_index)
+            )
 
-            bit_table[cond_rows, :] = np.logical_xor(bit_table[cond_rows, :], bit_table[start_index, :][None, :])
-            row_op[cond_rows, :] = np.logical_xor(row_op[cond_rows, :], row_op[start_index, :][None, :])
+            bit_table[cond_rows, :] = np.logical_xor(
+                bit_table[cond_rows, :], bit_table[start_index, :][None, :]
+            )
+            row_op[cond_rows, :] = np.logical_xor(
+                row_op[cond_rows, :], row_op[start_index, :][None, :]
+            )
 
             start_index += 1
 
         return bit_table, row_op, col_order, start_index
 
     @staticmethod
+    @staticmethod
     def _paulis_to_generators(paulis: PauliList) -> PauliList:
+        """
+        Extract generators from a set of Pauli strings using binary row reduction.
+        
+        Converts the Pauli strings to their symplectic representation (Z|X matrix)
+        and performs Gaussian elimination to find a minimal spanning set of generators.
+        The generators form a basis that can reconstruct all input Paulis.
+        
+        Args:
+            paulis (PauliList): Input Pauli strings to find generators for.
+        
+        Returns:
+            PauliList: Minimal set of generator Paulis (as PauliList).
+        
+        Notes:
+            Uses binary row reduction (GF(2)) to maintain the symplectic structure.
+        """
 
         num_qubits = paulis.num_qubits
 
@@ -195,7 +264,9 @@ class GeneralCommutation(BaseCommutation):
 
         new_zx_table = row_zx_table[~null_rows, :]
 
-        return PauliList.from_symplectic(new_zx_table[:, :num_qubits], new_zx_table[:, num_qubits:])
+        return PauliList.from_symplectic(
+            new_zx_table[:, :num_qubits], new_zx_table[:, num_qubits:]
+        )
 
     @staticmethod
     def _single_qubit_cummuting_generators(paulis: PauliList):
@@ -259,7 +330,9 @@ class GeneralCommutation(BaseCommutation):
                 if i_row != h_row:
                     re_bit_matrix[[i_row, h_row], :] = re_bit_matrix[[h_row, i_row], :]
 
-                cond_rows = np.logical_and(re_bit_matrix[:, k_col], (row_range != h_row))
+                cond_rows = np.logical_and(
+                    re_bit_matrix[:, k_col], (row_range != h_row)
+                )
 
                 re_bit_matrix[cond_rows, :] = np.logical_xor(
                     re_bit_matrix[cond_rows, :], re_bit_matrix[h_row, :][None, :]

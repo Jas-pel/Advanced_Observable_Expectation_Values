@@ -1,280 +1,385 @@
-# Advanced Estimator
+# Advanced Quantum Observable Estimation
 
-**Jasmin**
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Qiskit](https://img.shields.io/badge/Qiskit-1.0%2B-orange)
 
-Un framework pour estimer efficacement la valeur moyenne d'observables quantiques en regroupant les chaînes de Pauli commutantes via la théorie des graphes, la diagonalisation de Clifford et l'allocation adaptative de shots. Permet aussi la tomographie quantique.
+**Author:** Jasmin Pelletier
+
+An efficient framework for estimating quantum observable expectation values by grouping commuting Pauli operators using graph theory, Clifford diagonalization, and adaptive shot allocation.
+
+## 📋 Table of Contents
+
+- [Motivation & Problem](#motivation--problem)
+- [Project Architecture](#project-architecture)
+- [Estimation Pipeline](#estimation-pipeline)
+- [Commutation Strategies](#commutation-strategies)
+- [Clifford Synthesis](#clifford-synthesis)
+- [Estimation Module](#estimation-module)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Testing](#testing)
+- [References](#references)
 
 ---
 
-## Table des matières
+## Motivation & Problem
 
-1. [Problème et motivation](#problème-et-motivation)
-2. [Architecture du projet](#architecture-du-projet)
-3. [Pipeline d'estimation](#pipeline-destimation)
-4. [Module commutation](#module-commutation)
-5. [Module clifford.py](#module-cliffordpy)
-6. [Module estimation](#module-estimation)
-7. [Scripts d'utilisation](#scripts-dutilisation)
-8. [Installation](#installation)
-9. [Utilisation rapide](#utilisation-rapide)
-10. [Tests](#tests)
-11. [Références](#références)
-
----
-
-## Problème et motivation
-
-En informatique quantique, **mesurer un état le détruit**. Pour estimer la valeur moyenne d'une observable
+In quantum computing, **measurement destroys the quantum state**. To estimate the average value of an observable:
 
 $$\langle \hat{A} \rangle = \sum_i c_i \langle P_i \rangle$$
 
-il faut répéter les mesures (*shots*) un grand nombre de fois. Mesurer chaque chaîne de Pauli séparément est très coûteux (ex: 100 Pauli × 1000 shots = 100 000 circuits).
+we must repeat measurements (*shots*) many times. Measuring each Pauli string separately is prohibitively expensive (e.g., 100 Paulis × 1000 shots = 100,000 circuits).
 
-**L'idée clé** : regrouper les chaînes de Pauli qui **commutent** en **cliques**, les mesurer simultanément avec un seul circuit, et ainsi réduire drastiquement le nombre total de mesures nécessaires.
+**Key insight:** Group Pauli strings that **commute** into **cliques** and measure them simultaneously with a single circuit. This drastically reduces the total number of required measurements.
 
----
+### Why This Matters
 
-## Architecture du projet
-
-```
-advanced_estimator/
-├── commutation/                  # Stratégies de groupement
-│   ├── base_commutation.py       # Classe abstraite + recherche de cliques (NetworkX)
-│   ├── no_commuting.py           # Aucun groupement (1 Pauli = 1 circuit)
-│   ├── bitwise_commuting.py      # Commutation qubit-par-qubit
-│   ├── general_commuting.py      # Commutation générale + diagonalisation Clifford
-│   └── clifford.py               # Transformations symplectiques H, S, CX, CZ
-├── estimation/
-│   ├── pauli_estimation.py       # Estimation des ⟨Pᵢ⟩ et matrice de covariance
-│   └── observable_estimation.py  # Estimation itérative de ⟨Â⟩ avec réallocation de shots
-tests/                            # Tests unitaires
-usage/                            # Scripts de comparaison et visualisation
-```
+- **Shot Budget Efficiency:** Measure multiple compatible observables in one circuit
+- **Variance Reduction:** Adaptive shot allocation targets high-variance measurements
+- **Hardware Compatibility:** Works with both simulators and real quantum devices
+- **Scalability:** Optimal for variational quantum algorithms (VQE, QAOA)
 
 ---
 
-## Pipeline d'estimation
+## Project Architecture
+
+```
+advanced_estimation/
+├── commutation/                      # Grouping strategies
+│   ├── __init__.py
+│   ├── base_commutation.py           # Abstract base + NetworkX clique finding
+│   ├── no_commuting.py               # No grouping (1 Pauli = 1 circuit)
+│   ├── bitwise_commuting.py          # Qubit-by-qubit commutation
+│   ├── general_commuting.py          # Full commutation + Clifford synthesis
+│   └── clifford.py                   # Symplectic transformations (H, S, CX, CZ)
+│
+├── estimation/                       # Measurement & statistics
+│   ├── __init__.py
+│   ├── pauli_estimation.py           # Single Pauli expectation values & covariance
+│   ├── observable_estimation.py      # Observable estimation + iterative refinement
+│   └── state_tomography.py           # Quantum state tomography
+│
+├── tests/                            # Unit tests
+│   ├── test_clifford.py
+│   ├── test_bitwise.py
+│   ├── test_general.py
+│   └── test_estimation.py
+│
+├── usage/                            # Examples & comparison scripts
+│   └── example_quantum_tomography.py
+│
+├── pyproject.toml                    # Project metadata & dependencies
+├── requirements.txt                  # Python dependencies
+└── README.md                         # This file
+```
+
+---
+
+## Estimation Pipeline
 
 ```
 Observable Â = Σᵢ cᵢ Pᵢ
         │
         ▼
-┌──────────────────────────────┐
-│  1. Graphe de commutation    │  Nœud = Pauli, Arête = commutent
-│     commutation_table()      │
-└──────────┬───────────────────┘
-           ▼
-┌──────────────────────────────┐
-│  2. Cliques maximales        │  NetworkX : find_cliques()
-│     find_commuting_cliques() │  Chaque clique = mesurable ensemble
-└──────────┬───────────────────┘
-           ▼
-┌──────────────────────────────┐
-│  3. Diagonalisation          │  Circuit Clifford (H, S, CX, CZ)
-│     diagonalize_paulis_      │  Résultat : tous les Pauli → Z/I
-│     with_circuit()           │
-└──────────┬───────────────────┘
-           ▼
-┌──────────────────────────────┐
-│  4. Mesure                   │  |ψ⟩ → circuit diag → mesure Z
-│     Sampler Qiskit           │  Simulateur ou hardware réel
-└──────────┬───────────────────┘
-           ▼
-┌──────────────────────────────┐
-│  5. Statistiques             │  Valeurs moyennes ⟨Pᵢ⟩
-│     + covariances            │  Matrice de covariance Cov(Pᵢ, Pⱼ)
-└──────────┬───────────────────┘
-           ▼
-┌──────────────────────────────┐
-│  6. Réallocation itérative   │  Plus de shots aux cliques
-│     des shots                │  avec plus grande variance
-└──────────────────────────────┘
-           │
-           ▼
-        ⟨Â⟩ ± σ
+┌─────────────────────────────────┐
+│ Step 1: Commutation Mapping     │
+│ Build commutation_table()       │
+│ Nodes=Paulis, Edges=Commute     │
+└────────┬────────────────────────┘
+         ▼
+┌─────────────────────────────────┐
+│ Step 2: Min-Clique Grouping     │
+│ Find maximal cliques (NetworkX) │
+│ Each clique → one measurement   │
+└────────┬────────────────────────┘
+         ▼
+┌─────────────────────────────────┐
+│ Step 3: Clifford Synthesis      │
+│ Generate diagonalization        │
+│ circuits (H, S, CX, CZ gates)   │
+└────────┬────────────────────────┘
+         ▼
+┌─────────────────────────────────┐
+│ Step 4: Hardware Execution      │
+│ Execute on simulator or device  │
+│ Collect bitstring measurements  │
+└────────┬────────────────────────┘
+         ▼
+┌─────────────────────────────────┐
+│ Step 5: Expectation Synthesis   │
+│ Compute ⟨Pᵢ⟩ & covariance      │
+│ Combine clique results          │
+└────────┬────────────────────────┘
+         ▼
+┌─────────────────────────────────┐
+│ Step 6: Stability Analysis      │
+│ Measure variance               │
+│ Optionally iterate with adaptive│
+│ shot reallocation              │
+└─────────────────────────────────┘
+         │
+         ▼
+    Final: ⟨Â⟩ ± σ
 ```
 
 ---
 
-## Module commutation
+## Commutation Strategies
 
-Trois stratégies de commutation, toutes héritant de `BaseCommutation` :
+All commutation strategies inherit from `BaseCommutation` and implement:
+- `commutation_table()` - Boolean matrix where (i,j)=True if Pauli_i commutes with Pauli_j
+- `diagonalize_paulis_with_circuit()` - Returns diagonalized Paulis and transformation circuit
 
-### `BaseCommutation` (classe abstraite)
+### Strategy Comparison
 
-- `find_commuting_cliques(paulis)` : construit le graphe de commutation et trouve les cliques maximales via `networkx.find_cliques()`
-- Méthodes abstraites : `commutation_table()` et `diagonalize_paulis_with_circuit()`
+| Strategy | Condition | Cliques | Circuits | Efficiency |
+|----------|-----------|---------|----------|-----------|
+| **No Commutation** | Identity (each Pauli alone) | N | N | Baseline |
+| **Bitwise Commutation** | Qubit-by-qubit match | Moderate | Moderate | Conservative |
+| **General Commutation** | Full anticommutation count | Minimal | Minimal | **Optimal** |
 
-### `NoCommutation`
+### BaseCommutation (Abstract)
 
-- **Table de commutation** : matrice identité (rien ne commute sauf avec soi-même)
-- **Diagonalisation** : H sur les X, S†H sur les Y, rien sur les Z
-- **Résultat** : autant de circuits que de chaînes de Pauli
-- **Usage** : baseline naïve pour comparer
+```python
+def find_maximal_commuting_cliques(paulis) → list[NDArray]
+    # Build commutation graph and find all maximal cliques using NetworkX
+```
 
-### `BitwiseCommutation`
+### NoCommutation
 
-- **Condition** : Pᵢ et Pⱼ commutent **qubit par qubit** (*bitwise*)
-- **Table** : `¬(z₁·x₂ ⊕ x₁·z₂)` sur chaque qubit, `all()` sur les qubits
-- **Diagonalisation** : portes H et S† uniquement (single-qubit)
-- Groupement conservateur mais simple
+- **Commutation Table:** Identity matrix (only commutes with self)
+- **Diagonalization:** H gates for X, S†H for Y, identity for Z
+- **Result:** One circuit per Pauli (baseline worst-case)
 
-### `GeneralCommutation`
+### BitwiseCommutation
 
-- **Condition** : commutation quantique standard
+- **Condition:** Pᵢ and Pⱼ commute **element-wise per qubit**
+- **Table:** `¬(Z₁·X₂ ⊕ X₁·Z₂)` per qubit, then `all()` across qubits
+- **Diagonalization:** Single-qubit gates only (H, S†)
+- **Use Case:** Conservative grouping, easy to understand
 
-$$\sum_q \left( z_i^{(q)} x_j^{(q)} + x_i^{(q)} z_j^{(q)} \right) \equiv 0 \pmod{2}$$
+### GeneralCommutation
 
-- **Diagonalisation** : algorithme de Gokhale et al. (arXiv:1907.13623)
-  1. Réduction en générateurs (forme échelon binaire)
-  2. Packing diagonal sur les blocs X et Z
-  3. Élimination avec H, CX, CZ, S
-- **Le plus efficace** : produit le moins de cliques = le moins de circuits
+- **Condition:** Standard quantum commutation relation
+
+$$[P_i, P_j] = 0 \iff \sum_q (z_i^{(q)} x_j^{(q)} + x_i^{(q)} z_j^{(q)}) \equiv 0 \pmod{2}$$
+
+- **Algorithm:** [Gokhale et al., arXiv:1907.13623](https://arxiv.org/abs/1907.13623)
+  1. Generator reduction (binary echelon form)
+  2. Diagonal packing on X and Z blocks
+  3. Elimination with H, CX, CZ, S gates
+- **Result:** Minimum cliques → minimum total circuits
 
 ---
 
-## Module clifford.py
+## Clifford Synthesis
 
-Transformations symplectiques des chaînes de Pauli dans le **tableau de Gottesman-Knill**. Opèrent directement sur la représentation binaire (Z | X | φ) en O(n) au lieu de manipuler des matrices 2ⁿ × 2ⁿ.
+Symplectic transformations on Pauli strings using the **Gottesman-Knill tableau** representation. Operates on binary form `(Z|X|φ)` in O(n) time instead of manipulating 2ⁿ × 2ⁿ matrices.
 
-| Porte | Transformation Z | Transformation X | Mise à jour de la phase |
-|-------|------------------|------------------|------------------------|
+| Gate | Z Transformation | X Transformation | Phase Update |
+|------|------------------|------------------|--------------|
 | **H** | Z ↔ X | X ↔ Z | φ + 2·z·x |
-| **S** | Z ← Z ⊕ X | X inchangé | φ + 2·z·x |
+| **S** | Z ← Z ⊕ X | X unchanged | φ + 2·z·x |
 | **CX** | Zc ← Zc ⊕ Zt | Xt ← Xt ⊕ Xc | φ + 2·xc·zt·(1 − zc ⊕ xt) |
-| **CZ** | Zc ← Zc ⊕ Xt, Zt ← Zt ⊕ Xc | inchangé | φ + 2·xc·xt·(zc ⊕ zt) |
+| **CZ** | Zc ← Zc ⊕ Xt, Zt ← Zt ⊕ Xc | Unchanged | φ + 2·xc·xt·(zc ⊕ zt) |
 
-Ces fonctions sont utilisées par `GeneralCommutation.diagonalize_paulis_with_circuit()` pour transformer les Pauli en Pauli diagonaux tout en construisant le circuit correspondant.
-
----
-
-## Module estimation
-
-### `pauli_estimation.py`
-
-| Fonction | Rôle |
-|----------|------|
-| `bitstrings_to_bits()` | Convertit les bitstrings de mesure (`"011"`) en matrice booléenne numpy |
-| `diag_paulis_expectation_values_and_covariances()` | Calcule ⟨Pᵢ⟩ et Cov(Pᵢ, Pⱼ) à partir des counts de mesure |
-| `estimate_cliques_expectation_values_and_covariances()` | Orchestre mesure + statistiques pour chaque clique séparément |
-| `overall_paulis_expectation_values_and_covariances()` | Combine les résultats de toutes les cliques (moyenne pondérée par shots) |
-| `get_paulis_shots()` | Calcule le nombre total de shots alloués à chaque Pauli |
-
-### `observable_estimation.py`
-
-| Fonction | Rôle |
-|----------|------|
-| `iterative_estimate_sparse_pauli_op_expectation_value()` | Estimation itérative de ⟨Â⟩ avec réallocation adaptative des shots selon la variance pondérée par clique |
-| `compute_weighted_cliques_variances()` | Calcule Σⱼₖ cⱼ · Cov(Pⱼ, Pₖ) · cₖ pour chaque clique |
-
-**Algorithme itératif** :
-1. Distribuer les shots uniformément entre les cliques
-2. Estimer ⟨Pᵢ⟩ et les covariances
-3. Calculer la variance pondérée de chaque clique
-4. Réallouer les shots proportionnellement à √(variance) de chaque clique
-5. Répéter → convergence vers l'allocation optimale
+These transformations are used by `GeneralCommutation.diagonalize_paulis_with_circuit()` to rotate Paulis into the computational (Z) basis while generating the corresponding quantum circuit.
 
 ---
 
-## Scripts d'utilisation
+## Estimation Module
 
-| Script | Description |
-|--------|-------------|
-| `usage/compare_paulis_estimations.py` | Compare les 3 stratégies (No / Bitwise / General) sur l'estimation de ⟨Pᵢ⟩ individuels. Produit des barres d'erreur et des heatmaps de covariance. |
-| `usage/compare_observable_estimations.py` | Compare les 3 stratégies sur l'estimation itérative de ⟨Â⟩. Montre la convergence avec barres d'erreur par itération. |
-| `usage/compare_paulis_bitwise_general.py` | Comparaison directe Bitwise vs General sur un état aléatoire. |
+### Core Functions
+
+**`pauli_estimation.py`**
+
+| Function | Purpose |
+|----------|---------|
+| `bitstrings_to_bits()` | Convert measurement bitstrings to boolean arrays |
+| `diag_paulis_expectation_values_and_covariances()` | Compute ⟨Pᵢ⟩ and Cov(Pᵢ, Pⱼ) from measurement counts |
+| `estimate_cliques_expectation_values_and_covariances()` | Orchestrate measurement and statistics for each clique |
+| `overall_paulis_expectation_values_and_covariances()` | Combine all clique results (shot-weighted averaging) |
+| `get_paulis_shots()` | Calculate total shots allocated to each Pauli |
+
+**`observable_estimation.py`**
+
+| Function | Purpose |
+|----------|---------|
+| `iterative_estimate_sparse_pauli_op_expectation_value()` | Adaptive shot allocation across iterations |
+| `compute_weighted_cliques_variances()` | Calculate Σⱼₖ cⱼ · Cov(Pⱼ, Pₖ) · cₖ per clique |
+
+### Iterative Algorithm
+
+```
+Initialize: Uniform shot distribution
+Loop for N iterations:
+  1. Estimate ⟨Pᵢ⟩ and covariances for each clique
+  2. Compute observable ⟨Â⟩ and variance
+  3. Calculate weighted variance per clique
+  4. Reallocate shots proportional to √(variance)
+  5. Continue with next iteration
+Result: Convergence toward optimal shot allocation
+```
 
 ---
 
 ## Installation
 
-```bash
-# Cloner le dépôt
-git clone <url-du-repo>
-cd advanced-estimation-jasmin_thomas
+### Prerequisites
 
-# Créer et activer l'environnement virtuel
+- Python 3.9 or higher
+- Virtual environment (recommended)
+
+### Setup
+
+```bash
+# Clone repository
+git clone https://github.com/yourusername/advanced-estimation.git
+cd advanced-estimation
+
+# Create virtual environment
 python -m venv venv
 
-# Windows PowerShell :
+# Activate environment
+# On Windows (PowerShell):
 venv\Scripts\Activate.ps1
 
-# Linux / Mac :
+# On Linux/macOS:
 source venv/bin/activate
 
-# Installer les dépendances
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### Dépendances
+### Dependencies
 
-| Package | Rôle |
-|---------|------|
-| `numpy` | Calcul numérique et opérations symplectiques |
-| `networkx` | Graphes de commutation et recherche de cliques |
-| `qiskit` | Circuits quantiques et représentation des Pauli |
-| `qiskit-aer` | Simulateur quantique local |
-| `qiskit-ibm-runtime` | Interface Sampler V2 |
+| Package | Purpose |
+|---------|---------|
+| `numpy` | Numerical computing & symplectic operations |
+| `networkx` | Commutation graphs & clique algorithms |
+| `qiskit` | Quantum circuits & Pauli representation |
+| `qiskit-aer` | Local quantum simulator |
+| `qiskit-ibm-runtime` | Sampler V2 interface |
+| `scipy` | Scientific computing utilities |
+| `pytest` | Unit testing framework |
+| `jupyter` | Interactive notebooks |
 
 ---
 
-## Utilisation rapide
+## Quick Start
 
 ```python
 import numpy as np
-from qiskit import transpile
-from qiskit.circuit.random import random_circuit
-from qiskit.quantum_info import SparsePauliOp, pauli_basis
+from qiskit import QuantumCircuit
+from qiskit.quantum_info import SparsePauliOp
 from qiskit_aer import AerSimulator
 from qiskit_ibm_runtime import SamplerV2 as Sampler
 
-from advanced_estimator.commutation import GeneralCommutation
-from advanced_estimator.estimation.observable_estimation import (
+from advanced_estimation.commutation import GeneralCommutation
+from advanced_estimation.estimation.observable_estimation import (
     iterative_estimate_sparse_pauli_op_expectation_value,
 )
 
-# Setup
+# Initialize sampler
 simulator = AerSimulator()
 sampler = Sampler(mode=simulator)
 
-# Observable aléatoire sur 3 qubits
-paulis = pauli_basis(3)
-coeffs = 2 * np.random.random(paulis.size) - 1
-observable = SparsePauliOp(paulis, coeffs)
+# Create observable (weighted sum of Paulis)
+observable = SparsePauliOp(
+    ["XX", "YY", "ZZ", "IZ"],
+    coeffs=[0.5, -0.5, 1.0, 0.2]
+)
 
-# Circuit d'état aléatoire
-state_circuit = transpile(random_circuit(3, depth=4), simulator)
+# Prepare quantum state
+state_circuit = QuantumCircuit(2)
+state_circuit.h(0)
+state_circuit.cx(0, 1)
 
-# Estimation avec commutation générale
+# Estimate with general commutation strategy
 exp_values, variances = iterative_estimate_sparse_pauli_op_expectation_value(
-    observable, state_circuit, sampler,
-    commutation_module=GeneralCommutation(force_single_qubit_generators=True),
+    observable=observable,
+    state_circuit=state_circuit,
+    sampler=sampler,
+    commutation_module=GeneralCommutation(),
     shots_budget=2000,
     num_iterations=5,
 )
 
-print(f"<A> = {exp_values[-1]:.4f} +/- {np.sqrt(variances[-1]):.4f}")
+# Print results
+final_estimate = exp_values[-1]
+final_std = np.sqrt(variances[-1])
+print(f"⟨Â⟩ = {final_estimate:.4f} ± {final_std:.4f}")
+```
+
+### Example: Comparing Strategies
+
+```python
+from advanced_estimation.commutation import (
+    NoCommutation, BitwiseCommutation, GeneralCommutation
+)
+
+strategies = {
+    "No Grouping": NoCommutation(),
+    "Bitwise": BitwiseCommutation(),
+    "General": GeneralCommutation(),
+}
+
+for name, module in strategies.items():
+    cliques = module.find_maximal_commuting_cliques(observable.paulis)
+    print(f"{name}: {len(cliques)} cliques")
 ```
 
 ---
 
-## Tests
+## Testing
+
+Run the test suite to verify functionality:
 
 ```bash
-# Tous les tests
-pytest tests/
+# All tests
+pytest tests/ -v
 
-# Un fichier spécifique
-pytest tests/test_clifford.py
-pytest tests/test_general.py
-pytest tests/test_bitwise.py
-pytest tests/test_estimation.py
+# Specific test file
+pytest tests/test_general.py -v
+
+# With coverage report
+pytest tests/ --cov=advanced_estimation
 ```
+
+### Test Structure
+
+- `test_clifford.py` - Symplectic transformations and Gottesman-Knill tableau
+- `test_bitwise.py` - Bitwise commutation strategy
+- `test_general.py` - General commutation strategy
+- `test_estimation.py` - Expectation value estimation
 
 ---
 
-## Références
+## References
 
-- Gokhale et al., *Minimizing State Preparations in Variational Quantum Eigensolver by Partitioning into Commuting Families*, arXiv:1907.13623 (2019)
-- Aaronson & Gottesman, *Improved Simulation of Stabilizer Circuits*, Phys. Rev. A 70, 052328 (2004)
-- [Documentation Qiskit](https://qiskit.org)
+1. **Gokhale et al.** (2019) - *Minimizing State Preparations in Variational Quantum Eigensolver by Partitioning into Commuting Families*  
+   arXiv:[1907.13623](https://arxiv.org/abs/1907.13623)
+
+2. **Aaronson & Gottesman** (2004) - *Improved Simulation of Stabilizer Circuits*  
+   Phys. Rev. A **70**, 052328
+
+3. **Qiskit Documentation** - https://qiskit.org/documentation/
+
+4. **Pauli Strings & Stabilizer Codes**  
+   Nielsen & Chuang, *Quantum Computation and Quantum Information* (2010)
+
+---
+
+## License
+
+MIT License - See LICENSE file for details
+
+## Contributing
+
+Contributions welcome! Please submit issues or pull requests to improve this project.
+
+## Contact
+
+**Author:** Jasmin Pelletier  
+**Email:** pelletierjasmin7@gmail.com
