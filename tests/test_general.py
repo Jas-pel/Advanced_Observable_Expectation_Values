@@ -13,7 +13,9 @@ def test_general_commutation_table():
 
     commutation_table = commutation_module.commutation_table(paulis)
 
-    ref_commutation_table = np.array([[1, 0, 1, 0], [0, 1, 1, 1], [1, 1, 1, 1], [0, 1, 1, 1]]).astype(np.bool)
+    ref_commutation_table = np.array(
+        [[1, 0, 1, 0], [0, 1, 1, 1], [1, 1, 1, 1], [0, 1, 1, 1]]
+    ).astype(np.bool)
 
     assert np.all(commutation_table == ref_commutation_table)
 
@@ -27,7 +29,7 @@ def test_diagonalize_paulis_with_circuit():
     commutation_module = GeneralCommutation()
     commutation_module.force_single_qubit_generators = False
 
-    cliques_paulis_indices = commutation_module.find_commuting_cliques(paulis)
+    cliques_paulis_indices = commutation_module.find_min_commuting_cliques(paulis)
 
     cliques_paulis = []
     for clique_paulis_indices in cliques_paulis_indices:
@@ -37,6 +39,8 @@ def test_diagonalize_paulis_with_circuit():
 
     for clique_paulis in cliques_paulis:
         print(clique_paulis)
-        clique_diag_paulis, clique_diag_circuit = commutation_module.diagonalize_paulis_with_circuit(clique_paulis)
+        clique_diag_paulis, clique_diag_circuit = (
+            commutation_module.diagonalize_paulis_with_circuit(clique_paulis)
+        )
 
         assert check_diag_transformation(clique_paulis, clique_diag_paulis, clique_diag_circuit)

@@ -78,9 +78,13 @@ def test_estimate_cliques_expectation_values_and_covariances_random_state():
 
     # Exact computation
     paulis_matrices = paulis.to_matrix(array=True)
-    state_circuit = transpile(build_random_circuit(num_qubits=num_qubits, depth=state_circuit_depth), simulator)
+    state_circuit = transpile(
+        build_random_circuit(num_qubits=num_qubits, depth=state_circuit_depth), simulator
+    )
     state_vector = Statevector(state_circuit).data
-    exact_expectation_values = np.einsum("pij,i,j->p", paulis_matrices, state_vector.conj(), state_vector).real
+    exact_expectation_values = np.einsum(
+        "pij,i,j->p", paulis_matrices, state_vector.conj(), state_vector
+    ).real
 
     module_tuples = [
         ("Bitwise", BitwiseCommutation()),
@@ -89,21 +93,28 @@ def test_estimate_cliques_expectation_values_and_covariances_random_state():
 
     for i, (module_label, commutation_module) in enumerate(module_tuples):
 
-        cliques_paulis_indices = commutation_module.find_commuting_cliques(paulis)
+        cliques_paulis_indices = commutation_module.find_min_commuting_cliques(paulis)
         num_cliques = len(cliques_paulis_indices)
 
         cliques_shots = [max(total_shots // num_cliques, 1) for _ in range(num_cliques)]
 
-        cliques_expectation_values, cliques_covariances = estimate_cliques_expectation_values_and_covariances(
-            paulis,
-            cliques_paulis_indices,
-            cliques_shots,
-            commutation_module,
-            state_circuit,
-            sampler,
+        cliques_expectation_values, cliques_covariances = (
+            estimate_cliques_expectation_values_and_covariances(
+                paulis,
+                cliques_paulis_indices,
+                cliques_shots,
+                commutation_module,
+                state_circuit,
+                sampler,
+            )
         )
 
-        for paulis_expectation_values, paulis_covariances, clique_paulis_indices, clique_shots in zip(
+        for (
+            paulis_expectation_values,
+            paulis_covariances,
+            clique_paulis_indices,
+            clique_shots,
+        ) in zip(
             cliques_expectation_values, cliques_covariances, cliques_paulis_indices, cliques_shots
         ):
             paulis_variances = paulis_covariances.diagonal() / clique_shots
@@ -112,5 +123,3 @@ def test_estimate_cliques_expectation_values_and_covariances_random_state():
             assert check_expectation_values_within_range(
                 paulis_expectation_values, ref_paulis_expectation_values, paulis_variances
             ), "This test may fails sometimes"
-
-
