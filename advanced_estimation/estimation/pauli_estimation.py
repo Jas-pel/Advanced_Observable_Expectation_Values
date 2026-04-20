@@ -8,7 +8,6 @@ from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from advanced_estimation.commutation.base_commutation import BaseCommutation
 
 
-
 def estimate_cliques_expectation_values_and_covariances(
     paulis: PauliList,
     cliques_paulis_indices: list[NDArray[np.int_]],
@@ -205,19 +204,18 @@ def diag_paulis_expectation_values_and_covariances(
     assert np.all(~diag_paulis.x)
 
     # FIRST STEP: Compute expectation values
-    # b: bitstrings, q: qubits, p: paulis
-    bits_matrix = np.array(bitstrings_to_bits(list(counts.keys())), dtype=int)  # (b, q)
+    bits_matrix = np.array(bitstrings_to_bits(list(counts.keys())), dtype=int)
 
     lst_counts = list(counts.values())
-    probabilities = np.array(lst_counts, dtype=float) / np.sum(lst_counts)  # (b)
+    probabilities = np.array(lst_counts, dtype=float) / np.sum(lst_counts)
 
-    paulis_z = np.array(diag_paulis.z, dtype=int)  # (p, q)
+    paulis_z = np.array(diag_paulis.z, dtype=int)
 
     n_active_z = np.einsum("bq,pq->bp", bits_matrix, paulis_z)
     phases_expponent = np.floor_divide(diag_paulis.phase, 2)
-    phases = np.choose(phases_expponent, [1, -1])  # (p)
+    phases = np.choose(phases_expponent, [1, -1])
     parity_signs = np.where(n_active_z % 2 == 0, 1, -1)
-    eigen_vals = phases * parity_signs  # (b, p)
+    eigen_vals = phases * parity_signs
 
     exp_values = np.einsum("b,bp->p", probabilities, eigen_vals)
 
