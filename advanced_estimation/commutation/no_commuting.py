@@ -7,6 +7,17 @@ from advanced_estimation.commutation.base_commutation import BaseCommutation
 
 
 class NoCommutation(BaseCommutation):
+    """
+    Baseline commutation strategy with no grouping.
+    
+    Treats each Pauli operator as incompatible with all others (except itself).
+    This results in N measurement circuits for N Pauli operators - one per operator.
+    
+    Used as a baseline for performance comparison. While inefficient for shot usage,
+    it provides a simple reference point and generates minimal circuit depth per measurement.
+    
+    This is equivalent to saying no two Paulis commute, so they must be measured separately.
+    """
 
     def commutation_table(self, paulis: PauliList) -> NDArray[np.bool]:
         """

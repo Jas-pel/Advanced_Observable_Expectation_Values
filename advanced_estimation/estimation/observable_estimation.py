@@ -114,6 +114,25 @@ def compute_weighted_cliques_variances(
     cliques_paulis_indices: list[NDArray[np.int_]],
     cliques_covariances: list[NDArray[np.float64]],
 ) -> NDArray[np.float64]:
+    """
+    Compute the weighted variance contribution of each measurement clique.
+    
+    For an observable Â = Σᵢ cᵢ Pᵢ, the variance is:
+    Var(Â) = Σᵢⱼ cᵢ cⱼ Cov(Pᵢ, Pⱼ)
+    
+    This function computes per-clique contributions:
+    weighted_var[k] = Σᵢⱼ ∈ clique_k cᵢ cⱼ Cov(Pᵢ, Pⱼ)
+    
+    Used for adaptive shot allocation: cliques with higher variance get more shots.
+    
+    Args:
+        coeffs (NDArray[np.float64]): Observable coefficients [c₀, c₁, ..., cₙ].
+        cliques_paulis_indices (list[NDArray[np.int_]]): Pauli indices for each clique.
+        cliques_covariances (list[NDArray[np.float64]]): Covariance matrix per clique.
+    
+    Returns:
+        NDArray[np.float64]: Weighted variance for each clique (shape: n_cliques).
+    """
 
     num_cliques = len(cliques_paulis_indices)
 

@@ -7,6 +7,20 @@ from advanced_estimation.commutation.base_commutation import BaseCommutation
 
 
 class BitwiseCommutation(BaseCommutation):
+    """
+    Conservative commutation strategy using qubit-by-qubit matching.
+    
+    Two Pauli operators commute (bitwise) if they commute on every qubit independently.
+    This is a stricter condition than general commutation, resulting in smaller measurement
+    groups but with simpler circuits using only single-qubit Clifford gates.
+    
+    Suitable for scenarios where circuit depth is critical or when conservative grouping
+    is preferred over shot efficiency.
+    
+    Examples:
+        - XX and YY commute bitwise (both act as {X,Y} on qubits 0 and 1)
+        - XZ and YY do NOT commute bitwise (X and Y don't commute)
+    """
 
     def commutation_table(self, paulis: PauliList) -> NDArray[np.bool]:
         """

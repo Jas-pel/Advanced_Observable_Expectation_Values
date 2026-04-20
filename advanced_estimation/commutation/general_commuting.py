@@ -8,9 +8,29 @@ from advanced_estimation.commutation.base_commutation import BaseCommutation
 
 
 class GeneralCommutation(BaseCommutation):
+    """
+    Commutation strategy based on general quantum commutation relations.
+    
+    Implements the algorithm from Gokhale et al. (arXiv:1907.13623) for optimal
+    Pauli grouping. Groups operators by computing commutation relationships using
+    the anticommutation count, then synthesizes efficient diagonalization circuits.
+    
+    This strategy produces the minimal number of measurement groups, making it
+    the most efficient for shot budget allocation.
+    
+    Attributes:
+        force_single_qubit_generators (bool): Whether to include single-qubit generators
+            in addition to multi-qubit generators for improved circuit efficiency.
+    """
 
     def __init__(self, force_single_qubit_generators=True):
-
+        """
+        Initialize the GeneralCommutation strategy.
+        
+        Args:
+            force_single_qubit_generators (bool, optional): If True, add single-qubit
+                generators to the set for potentially shorter circuits. Default: True.
+        """
         self.force_single_qubit_generators = force_single_qubit_generators
 
     def commutation_table(self, paulis: PauliList) -> NDArray[np.bool]:
@@ -216,7 +236,24 @@ class GeneralCommutation(BaseCommutation):
         return bit_table, row_op, col_order, start_index
 
     @staticmethod
+    @staticmethod
     def _paulis_to_generators(paulis: PauliList) -> PauliList:
+        """
+        Extract generators from a set of Pauli strings using binary row reduction.
+        
+        Converts the Pauli strings to their symplectic representation (Z|X matrix)
+        and performs Gaussian elimination to find a minimal spanning set of generators.
+        The generators form a basis that can reconstruct all input Paulis.
+        
+        Args:
+            paulis (PauliList): Input Pauli strings to find generators for.
+        
+        Returns:
+            PauliList: Minimal set of generator Paulis (as PauliList).
+        
+        Notes:
+            Uses binary row reduction (GF(2)) to maintain the symplectic structure.
+        """
 
         num_qubits = paulis.num_qubits
 
