@@ -61,9 +61,7 @@ def estimate_cliques_expectation_values_and_covariances(
         estimation_circuits.append(estimation_circuit)
 
     # Transpile the estimation circuits to the target backend
-    pass_manager = generate_preset_pass_manager(
-        backend=sampler.mode, optimization_level=1
-    )
+    pass_manager = generate_preset_pass_manager(backend=sampler.mode, optimization_level=1)
     isa_circuits = pass_manager.run(estimation_circuits)
 
     # Run the circuits and get the results
@@ -109,9 +107,7 @@ def overall_paulis_expectation_values_and_covariances(
         NDArray[np.float64]: The overall expectation values
         NDArray[np.float64]: The overall covariance matrix
     """
-    total_shots_per_paulis = get_paulis_shots(
-        num_paulis, cliques_paulis_indices, cliques_shots
-    )
+    total_shots_per_paulis = get_paulis_shots(num_paulis, cliques_paulis_indices, cliques_shots)
     paulis_expectation_values = np.zeros(num_paulis)
     paulis_covariances = np.zeros((num_paulis, num_paulis))
 
@@ -127,9 +123,7 @@ def overall_paulis_expectation_values_and_covariances(
         cliques_shots,
     ):
 
-        paulis_expectation_values[clique_paulis_indices] += (
-            clique_shot * clique_expectation_values
-        )
+        paulis_expectation_values[clique_paulis_indices] += clique_shot * clique_expectation_values
 
         grid = np.ix_(clique_paulis_indices, clique_paulis_indices)
         paulis_covariances[grid] += clique_shot * clique_covariances
@@ -203,25 +197,25 @@ def diag_paulis_expectation_values_and_covariances(
     """
     assert np.all(~diag_paulis.x)
 
-    # FIRST STEP: Compute expectation values
-    bits_matrix = np.array(bitstrings_to_bits(list(counts.keys())), dtype=int)
+    # Parse measurement data
+    bitstrings, measurements = zip(*counts.items())
+    bits_matrix = np.array(bitstrings_to_bits(bitstrings), dtype=int)
+    probabilities = np.array(measurements, dtype=float) / np.sum(measurements)
 
-    lst_counts = list(counts.values())
-    probabilities = np.array(lst_counts, dtype=float) / np.sum(lst_counts)
-
+    # Extract Pauli properties: phase_sign ∈ {+1, -1} from phase ∈ {0,1,2,3}
+    phases_signs = 1 - 2 * (diag_paulis.phase // 2)
     paulis_z = np.array(diag_paulis.z, dtype=int)
 
+    # Compute eigenvalues: λ(P,|b⟩) = phase(P) × (-1)^(# of Z on |1⟩)
     n_active_z = np.einsum("bq,pq->bp", bits_matrix, paulis_z)
-    phases_expponent = np.floor_divide(diag_paulis.phase, 2)
-    phases = np.choose(phases_expponent, [1, -1])
-    parity_signs = np.where(n_active_z % 2 == 0, 1, -1)
-    eigen_vals = phases * parity_signs
+    parity_signs = 1 - 2 * (n_active_z % 2)
+    eigen_vals = phases_signs * parity_signs
 
+    # Expectation values: ⟨P⟩ = Σ_b prob(b) × λ(P, b)
     exp_values = np.einsum("b,bp->p", probabilities, eigen_vals)
 
-    # SECOND STEP: Compute covariances
+    # Covariances: Cov(P,Q) = ⟨PQ⟩ - ⟨P⟩⟨Q⟩
     expected_products = np.einsum("b,bp,bk->pk", probabilities, eigen_vals, eigen_vals)
-    product_of_means = np.outer(exp_values, exp_values)
-    paulis_paulis_covariances = expected_products - product_of_means
+    covariances = expected_products - np.outer(exp_values, exp_values)
 
-    return exp_values, paulis_paulis_covariances
+    return exp_values, covariances
